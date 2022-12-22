@@ -44,7 +44,7 @@ class SESR(hk.Module):
         n, w, h, c = inputs.shape
         # assert c == self.scale**2
         x = jnp.reshape(inputs, (n, w, h, self.scale, self.scale))
-        x = jnp.transpose(x, (0, 3, 1, 4, 2))
+        x = jnp.swapaxes(x, 2, 3)
         x = jnp.reshape(x, (n, w * self.scale, h * self.scale))
         return x
 
