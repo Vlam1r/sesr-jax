@@ -9,7 +9,6 @@ import jax.numpy as jnp
 import numpy as np
 import optax
 import tensorflow_datasets as tfds
-import tensorflow as tf
 
 NUM_CLASSES = 10  # MNIST has 10 classes (hand-written digits).
 
