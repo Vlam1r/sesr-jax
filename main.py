@@ -7,6 +7,8 @@ import jax.numpy as jnp
 import numpy as np
 import optax
 import tensorflow_datasets as tfds
+import tensorflow as tf
+tf.config.run_functions_eagerly(False)
 
 NUM_CLASSES = 10  # MNIST has 10 classes (hand-written digits).
 
@@ -41,7 +43,7 @@ def load_dataset(
         batch_size: int,
         ) -> Iterator[Batch]:
     """Loads the MNIST dataset."""
-    ds = tfds.load("mnist:3.*.*", split=split).repeat()
+    ds = tfds.load("mnist:3.*.*", split=split).cache().repeat()
     if shuffle:
         ds = ds.shuffle(10 * batch_size, seed=0)
     ds = ds.batch(batch_size)
