@@ -7,6 +7,8 @@ import jax.numpy as jnp
 import numpy as np
 import optax
 import tensorflow_datasets as tfds
+import model.sesr
+
 import tensorflow as tf
 tf.config.run_functions_eagerly(False)
 
@@ -28,6 +30,8 @@ def net_fn(images: jnp.ndarray) -> jnp.ndarray:
     """Standard LeNet-300-100 MLP network."""
     x = images.astype(jnp.float32) / 255.
     mlp = hk.Sequential([
+        model.sesr.SESR_M3(),
+        hk.MaxPool(window_shape=(2, 2), strides=(2, 2), padding='VALID', channel_axis=None),
         hk.Flatten(),
         hk.Linear(300), jax.nn.relu,
         hk.Linear(100), jax.nn.relu,
@@ -43,7 +47,7 @@ def load_dataset(
         batch_size: int,
         ) -> Iterator[Batch]:
     """Loads the MNIST dataset."""
-    ds = tfds.load("mnist:3.*.*", split=split).cache().repeat()
+    ds = tfds.load("mnist:3.*.*", split=split).repeat()
     if shuffle:
         ds = ds.shuffle(10 * batch_size, seed=0)
     ds = ds.batch(batch_size)
@@ -88,10 +92,10 @@ def main(_):
         return TrainingState(params, avg_params, opt_state)
 
     # Make datasets.
-    train_dataset = load_dataset("train", shuffle=True, batch_size=1_000)
+    train_dataset = load_dataset("train", shuffle=True, batch_size=32)
 
     eval_datasets = {
-        split: load_dataset(split, shuffle=False, batch_size=10_000)
+        split: load_dataset(split, shuffle=False, batch_size=32)
         for split in ("train", "test")
         }
     # Initialise network and optimiser; note we draw an input to get shapes.

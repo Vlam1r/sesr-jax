@@ -3,7 +3,7 @@ import jax
 import jax.numpy as jnp
 
 
-class PRELU(hk.Module):
+class PReLU(hk.Module):
     """
     Parametrised ReLU implementation for Haiku
     """
