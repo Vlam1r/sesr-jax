@@ -1,0 +1,8 @@
+absl-py
+optax
+dm-haiku
+numpy
+jax
+jaxlib
+tensorflow-datasets
+jupyter
