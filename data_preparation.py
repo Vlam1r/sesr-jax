@@ -2,10 +2,15 @@ import numpy as np
 import tensorflow as tf
 import tensorflow_datasets as tfds
 from functools import partial
-from typing import Tuple, List, Iterable
+from typing import Tuple, List, Iterable, NamedTuple
 
 AUTOTUNE = tf.data.AUTOTUNE
 DATA_DIR = "data/"
+
+
+class Batch(NamedTuple):
+    hr: np.ndarray
+    lr: np.ndarray
 
 
 def remove_dict(example: tfds.features.FeaturesDict) -> Tuple[tf.Tensor, tf.Tensor]:
@@ -62,14 +67,22 @@ def get_dataset(dataset_name: str,
     :param num_crops_per_image: number of cropped patches to extract per image
     :return: training dataset, validation dataset
     """
-    dataset_dir = DATA_DIR + str.split(dataset_name, "/")[0] + "_" + str.split(dataset_name, "/")[1]
-    ds_train, ds_val = tfds.load(dataset_name, split=["train", "validation"], shuffle_files=True,
-                                 data_dir=dataset_dir)
+    dataset_dir = DATA_DIR
+    ds_train, ds_val = tfds.load(dataset_name, split=["train", "validation"], shuffle_files=True, data_dir=dataset_dir)
     random_crops_fn = partial(get_random_crops, low_res_crop_size=low_res_crop_size, super_res_factor=super_res_factor,
                               num_crops=num_crops_per_image)
     ds_train = ds_train.map(remove_dict).map(random_crops_fn).unbatch().shuffle(buffer_size=10000).batch(batch_size) # TODO: Prefetch?
-    ds_val = ds_val.map(remove_dict).map(random_crops_fn).unbatch().batch(1)
-    return tfds.as_numpy(ds_train), tfds.as_numpy(ds_val)
+    ds_val = ds_val.map(remove_dict).map(random_crops_fn).unbatch().batch(10)
+
+
+    # TODO this should be YCbCr -> Y, not RGB -> R
+    ds_train = ds_train.map(lambda lr, hr: (lr[:,:,:,0], hr[:,:,:,0]))
+    ds_val = ds_val.map(lambda lr, hr: (lr[:,:,:,0], hr[:,:,:,0]))
+
+    ds_train = ds_train.map(lambda lr, hr: Batch(lr=lr, hr=hr))
+    ds_val = ds_val.map(lambda lr, hr: Batch(lr=lr, hr=hr))
+
+    return iter(tfds.as_numpy(ds_train)), iter(tfds.as_numpy(ds_val))
 
 
 if __name__ == "__main__":

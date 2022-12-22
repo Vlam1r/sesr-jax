@@ -1,23 +1,23 @@
+import logging
 from typing import Iterator, NamedTuple
 
-from absl import app
+from absl import app, flags
 import haiku as hk
 import jax
 import jax.numpy as jnp
-import numpy as np
 import optax
-import tensorflow_datasets as tfds
 import model.sesr
+from data_preparation import get_dataset, Batch
 
 import tensorflow as tf
 tf.config.run_functions_eagerly(False)
 
+flags.DEFINE_integer('seed', 42, 'Random seed to set')
+flags.DEFINE_integer('epochs', 300, 'Number of epochs to train')
+flags.DEFINE_integer('scale', 2, 'Scaling factor')
+FLAGS = flags.FLAGS
+
 NUM_CLASSES = 10  # MNIST has 10 classes (hand-written digits).
-
-
-class Batch(NamedTuple):
-    image: np.ndarray  # [B, H, W, 1]
-    label: np.ndarray  # [B]
 
 
 class TrainingState(NamedTuple):
@@ -29,58 +29,33 @@ class TrainingState(NamedTuple):
 def net_fn(images: jnp.ndarray) -> jnp.ndarray:
     """Standard LeNet-300-100 MLP network."""
     x = images.astype(jnp.float32) / 255.
-    mlp = hk.Sequential([
-        model.sesr.SESR_M3(),
-        hk.MaxPool(window_shape=(2, 2), strides=(2, 2), padding='VALID', channel_axis=None),
-        hk.Flatten(),
-        hk.Linear(300), jax.nn.relu,
-        hk.Linear(100), jax.nn.relu,
-        hk.Linear(NUM_CLASSES),
-        ])
-    return mlp(x)
+    fn = model.sesr.SESR_M3()
+    return fn(x)
+
+# @jax.jit
+def PSNR(x, y):
+    mse = jnp.mean((x - y) ** 2)
+    max_pixel = 255.0
+    psnr = 20 * jnp.log10(max_pixel / jnp.sqrt(mse))
+    return jnp.nan_to_num(psnr, nan=100)
 
 
-def load_dataset(
-        split: str,
-        *,
-        shuffle: bool,
-        batch_size: int,
-        ) -> Iterator[Batch]:
-    """Loads the MNIST dataset."""
-    ds = tfds.load("mnist:3.*.*", split=split).repeat()
-    if shuffle:
-        ds = ds.shuffle(10 * batch_size, seed=0)
-    ds = ds.batch(batch_size)
-    ds = ds.map(lambda x: Batch(**x))
-    return iter(tfds.as_numpy(ds))
+def main(unused_args):
 
-
-def main(_):
-    # First, make the network and optimiser.
     network = hk.without_apply_rng(hk.transform(net_fn))
     optimiser = optax.adam(1e-3)
+    rng = jax.random.PRNGKey(seed=FLAGS.seed)
 
+    @jax.jit
     def loss(params: hk.Params, batch: Batch) -> jnp.ndarray:
-        """Cross-entropy classification loss, regularised by L2 weight decay."""
-        batch_size, *_ = batch.image.shape
-        logits = network.apply(params, batch.image)
-        labels = jax.nn.one_hot(batch.label, NUM_CLASSES)
-
-        l2_regulariser = 0.5 * sum(
-            jnp.sum(jnp.square(p)) for p in jax.tree_util.tree_leaves(params))
-        log_likelihood = jnp.sum(labels * jax.nn.log_softmax(logits))
-
-        return -log_likelihood / batch_size + 1e-4 * l2_regulariser
+        """Mean absolute error loss."""
+        upscaled = network.apply(params, batch.lr)
+        #psnr = PSNR(upscaled, batch.hr)
+        mae = jnp.mean(jnp.abs(batch.hr - upscaled))
+        return mae
 
     @jax.jit
-    def evaluate(params: hk.Params, batch: Batch) -> jnp.ndarray:
-        """Evaluation metric (classification accuracy)."""
-        logits = network.apply(params, batch.image)
-        predictions = jnp.argmax(logits, axis=-1)
-        return jnp.mean(predictions == batch.label)
-
-    @jax.jit
-    def update(state: TrainingState, batch: Batch) -> TrainingState:
+    def SGD(state: TrainingState, batch: Batch) -> TrainingState:
         """Learning rule (stochastic gradient descent)."""
         grads = jax.grad(loss)(state.params, batch)
         updates, opt_state = optimiser.update(grads, state.opt_state)
@@ -91,30 +66,32 @@ def main(_):
             params, state.avg_params, step_size=0.001)
         return TrainingState(params, avg_params, opt_state)
 
-    # Make datasets.
-    train_dataset = load_dataset("train", shuffle=True, batch_size=32)
+    # @jax.jit
+    def eval():
+        mae = loss(state.avg_params, next(eval_dataset))
+        logging.info({"step": step, "mae": f"{mae:.3f}"})
 
-    eval_datasets = {
-        split: load_dataset(split, shuffle=False, batch_size=32)
-        for split in ("train", "test")
-        }
+    # Make datasets.
+    rng, new_rng = jax.random.split(rng)
+    train_dataset, eval_dataset = get_dataset(dataset_name='div2k',
+                                              super_res_factor=FLAGS.scale)
+    logging.info("Created datasets.")
+
     # Initialise network and optimiser; note we draw an input to get shapes.
-    initial_params = network.init(
-        jax.random.PRNGKey(seed=0), next(train_dataset).image)
+    initial_params = network.init(rng, next(train_dataset).lr)
     initial_opt_state = optimiser.init(initial_params)
     state = TrainingState(initial_params, initial_params, initial_opt_state)
 
+    logging.info("Starting training loop.")
     # Training & evaluation loop.
-    for step in range(3001):
-        if step % 100 == 0:
-            # Periodically evaluate classification accuracy on train & test sets.
-            # Note that each evaluation is only on a (large) batch.
-            for split, dataset in eval_datasets.items():
-                accuracy = np.array(evaluate(state.avg_params, next(dataset))).item()
-                print({"step": step, "split": split, "accuracy": f"{accuracy:.3f}"})
+    for step in range(FLAGS.epochs):
+        if step % 10 == 0:
+            eval()
 
         # Do SGD on a batch of training examples.
-        state = update(state, next(train_dataset))
+        state = SGD(state, next(train_dataset))
+
+    logging.info("Training loop completed.")
 
 
 if __name__ == "__main__":

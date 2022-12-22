@@ -7,3 +7,4 @@ jaxlib
 tensorflow-datasets
 tensorflow
 jupyter
+matplotlib

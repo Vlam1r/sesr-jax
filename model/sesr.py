@@ -20,6 +20,7 @@ class SESR(hk.Module):
 
     def __call__(self,
                  inputs: jnp.ndarray):
+        inputs = inputs.reshape((*inputs.shape, 1))
         first5x5 = LinearBlock(hidden_dim=self.hidden_dim,
                                output_dim=self.f,
                                kernel=5)  # First 5x5 linear block
@@ -32,10 +33,12 @@ class SESR(hk.Module):
 
         a = first5x5(inputs)
         b = a + residual_blocks(a)  # First long residual connection
-        c = inputs + last5x5(b)  # Second long residual connection
-        d = self.depth_to_space(c)
-        return d
+        c = last5x5(b)  # Second long residual connection
+        d = inputs + c
+        e = self.depth_to_space(d)
+        return e
 
+    # @jax.jit
     def depth_to_space(self,
                        inputs: jnp.ndarray):
         n, w, h, c = inputs.shape
@@ -50,18 +53,18 @@ class SESR_M3(SESR):
     def __init__(self,
                  scale: int = 2,
                  name: str = 'sesr_m3'):
-        super().__init__(scale=scale, m=3, f=16, hidden_dim=256)
+        super().__init__(scale=scale, m=3, f=16, hidden_dim=256, name=name)
 
 
 class SESR_M5(SESR):
     def __init__(self,
                  scale: int = 2,
                  name: str = 'sesr_m5'):
-        super().__init__(scale=scale, m=5, f=16, hidden_dim=256)
+        super().__init__(scale=scale, m=5, f=16, hidden_dim=256, name=name)
 
 
 class SESR_M11(SESR):
     def __init__(self,
                  scale: int = 2,
                  name: str = 'sesr_m11'):
-        super().__init__(scale=scale, m=11, f=16, hidden_dim=256)  # TODO or f=32?
+        super().__init__(scale=scale, m=11, f=16, hidden_dim=256, name=name)  # TODO or f=32?
