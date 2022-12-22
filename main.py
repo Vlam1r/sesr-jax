@@ -1,4 +1,5 @@
 import logging
+import pickle
 from typing import Iterator, NamedTuple
 
 from absl import app, flags
@@ -17,8 +18,6 @@ flags.DEFINE_integer('epochs', 300, 'Number of epochs to train')
 flags.DEFINE_integer('scale', 2, 'Scaling factor')
 FLAGS = flags.FLAGS
 
-NUM_CLASSES = 10  # MNIST has 10 classes (hand-written digits).
-
 
 class TrainingState(NamedTuple):
     params: hk.Params
@@ -29,7 +28,7 @@ class TrainingState(NamedTuple):
 def net_fn(images: jnp.ndarray) -> jnp.ndarray:
     """Standard LeNet-300-100 MLP network."""
     x = images.astype(jnp.float32) / 255.
-    fn = model.sesr.SESR_M3()
+    fn = model.sesr.SESR_M11()
     return fn(x)
 
 # @jax.jit
@@ -38,6 +37,7 @@ def PSNR(x, y):
     max_pixel = 255.0
     psnr = 20 * jnp.log10(max_pixel / jnp.sqrt(mse))
     return jnp.nan_to_num(psnr, nan=100)
+
 
 
 def main(unused_args):
@@ -50,9 +50,9 @@ def main(unused_args):
     def loss(params: hk.Params, batch: Batch) -> jnp.ndarray:
         """Mean absolute error loss."""
         upscaled = network.apply(params, batch.lr)
-        #psnr = PSNR(upscaled, batch.hr)
-        mae = jnp.mean(jnp.abs(batch.hr - upscaled))
-        return mae
+        #mae = jnp.mean(jnp.abs(batch.hr - upscaled))
+        mse = jnp.mean((batch.hr - upscaled) ** 2)
+        return mse
 
     @jax.jit
     def SGD(state: TrainingState, batch: Batch) -> TrainingState:
@@ -68,8 +68,10 @@ def main(unused_args):
 
     # @jax.jit
     def eval():
-        mae = loss(state.avg_params, next(eval_dataset))
-        logging.info({"step": step, "mae": f"{mae:.3f}"})
+        mse = loss(state.avg_params, next(eval_dataset))
+        logging.info({"step": step, "mse": f"{mse:.3f}"})
+
+
 
     # Make datasets.
     rng, new_rng = jax.random.split(rng)
@@ -92,6 +94,10 @@ def main(unused_args):
         state = SGD(state, next(train_dataset))
 
     logging.info("Training loop completed.")
+
+
+    with open('model.pkl', 'wb') as f:
+        pickle.dump({'params': state.params, 'opt_state': state.opt_state}, f)
 
 
 if __name__ == "__main__":
