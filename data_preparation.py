@@ -2,7 +2,7 @@ import numpy as np
 import tensorflow as tf
 import tensorflow_datasets as tfds
 from functools import partial
-from typing import Tuple, List, Iterable, NamedTuple
+from typing import Tuple, List, Iterable, NamedTuple, Dict
 
 AUTOTUNE = tf.data.AUTOTUNE
 DATA_DIR = "data/"
@@ -11,6 +11,23 @@ DATA_DIR = "data/"
 class Batch(NamedTuple):
     hr: np.ndarray
     lr: np.ndarray
+
+
+#Convert RGB image to YCbCr from https://github.com/ARM-software/sesr/blob/master/utils.p
+def rgb_to_ycbcr(rgb: tf.Tensor) -> tf.Tensor:
+    ycbcr_from_rgb = tf.constant([[65.481, 128.553, 24.966],
+                                  [-37.797, -74.203, 112.0],
+                                  [112.0, -93.786, -18.214]])
+    rgb = tf.cast(rgb, dtype=tf.dtypes.float32) / 255.
+    ycbcr = tf.linalg.matmul(rgb, ycbcr_from_rgb, transpose_b=True)
+    return ycbcr + tf.constant([[[16., 128., 128.]]])
+
+
+#Get the Y-Channel only
+def rgb_to_y(example: tfds.features.FeaturesDict) -> Dict[str, tf.Tensor]:
+    lr_ycbcr = rgb_to_ycbcr(example['lr'])
+    hr_ycbcr = rgb_to_ycbcr(example['hr'])
+    return {'lr': lr_ycbcr[..., 0:1] / 255., 'hr': hr_ycbcr[..., 0:1] / 255.}
 
 
 def remove_dict(example: tfds.features.FeaturesDict) -> Tuple[tf.Tensor, tf.Tensor]:
@@ -71,13 +88,10 @@ def get_dataset(dataset_name: str,
     ds_train, ds_val = tfds.load(dataset_name, split=["train", "validation"], shuffle_files=True, data_dir=dataset_dir)
     random_crops_fn = partial(get_random_crops, low_res_crop_size=low_res_crop_size, super_res_factor=super_res_factor,
                               num_crops=num_crops_per_image)
-    ds_train = ds_train.map(remove_dict).map(random_crops_fn).unbatch().shuffle(buffer_size=10000).batch(batch_size) # TODO: Prefetch?
-    ds_val = ds_val.map(remove_dict).map(random_crops_fn).unbatch().batch(10)
+    ds_train = ds_train.map(rgb_to_y).map(remove_dict).map(random_crops_fn).unbatch().shuffle(buffer_size=10000).batch(
+        batch_size) # TODO: Prefetch?
+    ds_val = ds_val.map(rgb_to_y).map(remove_dict).map(random_crops_fn).unbatch().batch(10)
 
-
-    # TODO this should be YCbCr -> Y, not RGB -> R
-    ds_train = ds_train.map(lambda lr, hr: (lr[:,:,:,0], hr[:,:,:,0]))
-    ds_val = ds_val.map(lambda lr, hr: (lr[:,:,:,0], hr[:,:,:,0]))
 
     ds_train = ds_train.map(lambda lr, hr: Batch(lr=lr, hr=hr))
     ds_val = ds_val.map(lambda lr, hr: Batch(lr=lr, hr=hr))

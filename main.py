@@ -27,16 +27,10 @@ class TrainingState(NamedTuple):
 
 def net_fn(images: jnp.ndarray) -> jnp.ndarray:
     """Standard LeNet-300-100 MLP network."""
-    x = images.astype(jnp.float32) / 255.
     fn = model.sesr.SESR_M11()
-    return fn(x)
+    return fn(images)
 
-# @jax.jit
-def PSNR(x, y):
-    mse = jnp.mean((x - y) ** 2)
-    max_pixel = 255.0
-    psnr = 20 * jnp.log10(max_pixel / jnp.sqrt(mse))
-    return jnp.nan_to_num(psnr, nan=100)
+
 
 
 
@@ -47,12 +41,22 @@ def main(unused_args):
     rng = jax.random.PRNGKey(seed=FLAGS.seed)
 
     @jax.jit
+    def mae(x, y):
+        z = jnp.mean(jnp.abs(x - y))
+        return z
+
+    # @jax.jit
+    def psnr(x, y):
+        mse = jnp.mean((x - y) ** 2)
+        if mse == 0:
+            return float('inf')
+        return 20 * jnp.log10(1 / jnp.sqrt(mse))
+
+    @jax.jit
     def loss(params: hk.Params, batch: Batch) -> jnp.ndarray:
         """Mean absolute error loss."""
         upscaled = network.apply(params, batch.lr)
-        #mae = jnp.mean(jnp.abs(batch.hr - upscaled))
-        mse = jnp.mean((batch.hr - upscaled) ** 2)
-        return mse
+        return mae(batch.hr, upscaled)
 
     @jax.jit
     def SGD(state: TrainingState, batch: Batch) -> TrainingState:
@@ -68,8 +72,12 @@ def main(unused_args):
 
     # @jax.jit
     def eval():
-        mse = loss(state.avg_params, next(eval_dataset))
-        logging.info({"step": step, "mse": f"{mse:.3f}"})
+        x = next(eval_dataset)
+        upscaled = network.apply(state.avg_params, x.lr)
+        logging.info({"step": step,
+                      "mae (optimised)": f"{mae(upscaled, x.hr):.3f}",
+                      "psnr": f"{psnr(upscaled, x.hr):.3f}"
+                      })
 
 
 
@@ -93,8 +101,8 @@ def main(unused_args):
         # Do SGD on a batch of training examples.
         state = SGD(state, next(train_dataset))
 
+    eval()
     logging.info("Training loop completed.")
-
 
     with open('model.pkl', 'wb') as f:
         pickle.dump({'params': state.params, 'opt_state': state.opt_state}, f)
