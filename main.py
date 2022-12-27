@@ -7,7 +7,7 @@ import haiku as hk
 import jax
 import jax.numpy as jnp
 import optax
-import model.sesr
+import models.model
 from data_preparation import get_dataset, Batch
 
 import tensorflow as tf
@@ -25,18 +25,9 @@ class TrainingState(NamedTuple):
     opt_state: optax.OptState
 
 
-def net_fn(images: jnp.ndarray) -> jnp.ndarray:
-    """Standard LeNet-300-100 MLP network."""
-    fn = model.sesr.SESR_M11()
-    return fn(images)
-
-
-
-
-
 def main(unused_args):
 
-    network = hk.without_apply_rng(hk.transform(net_fn))
+    network = models.model.Model(network='M11')
     optimiser = optax.adam(1e-3)
     rng = jax.random.PRNGKey(seed=FLAGS.seed)
 

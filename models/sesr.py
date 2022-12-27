@@ -1,7 +1,7 @@
 import haiku as hk
 import jax
 import jax.numpy as jnp
-from model.linear_block import LinearBlock, ResidualLinearBlock
+from models.linear_block import LinearBlock, ResidualLinearBlock
 
 
 class SESR(hk.Module):

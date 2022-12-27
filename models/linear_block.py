@@ -1,6 +1,6 @@
 import haiku as hk
 import jax.numpy as jnp
-import model.prelu
+import models.prelu
 
 
 class LinearBlock(hk.Module):
@@ -25,7 +25,7 @@ class LinearBlock(hk.Module):
 class ResidualLinearBlock(LinearBlock):
     def __call__(self,
                  inputs: jnp.ndarray):
-        act = model.prelu.PReLU()
+        act = models.prelu.PReLU()
         out = super().__call__(inputs)
 
         return act(inputs + out)
