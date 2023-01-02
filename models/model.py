@@ -8,9 +8,9 @@ from models.collapser import collapse
 
 def get_sesr_args(name: str):
     return {
-        'M3':  {'m': 3,  'f': 16, 'hidden_dim': 256},
-        'M5':  {'m': 5,  'f': 16, 'hidden_dim': 256},
-        'M11': {'m': 11, 'f': 16, 'hidden_dim': 256},  # TODO or f=32?
+        'M3':  {'m': 3,  'f': 16, 'hidden_dim': 256, 'scale': 2},
+        'M5':  {'m': 5,  'f': 16, 'hidden_dim': 256, 'scale': 2},
+        'M11': {'m': 11, 'f': 16, 'hidden_dim': 256, 'scale': 2},  # TODO or f=32?
         }.get(name)
 
 
@@ -32,8 +32,9 @@ class Model:
         self.col_transformed = hk.without_apply_rng(hk.transform(self.collapsed_fn))
 
     def init(self, *args):
-        _ = self.col_transformed.init(*args, scale=2, **self.kwargs)
-        return self.exp_transformed.init(*args, scale=2, **self.kwargs)
+        _ = self.col_transformed.init(*args, **self.kwargs)
+        return self.exp_transformed.init(*args, **self.kwargs)
 
     def apply(self, params, images):
-        return self.col_transformed.apply(collapse(params, **self.kwargs), images)
+        return self.exp_transformed.apply(params, images, **self.kwargs)
+        #return self.col_transformed.apply(collapse(params, **self.kwargs), images, **self.kwargs)

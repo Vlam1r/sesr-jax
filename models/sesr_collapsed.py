@@ -1,6 +1,7 @@
 import haiku as hk
 import jax.numpy as jnp
-from models.linear_block import LinearBlock, ResidualLinearBlock
+
+import models.prelu
 
 
 class SESR_Collapsed(hk.Module):
@@ -19,18 +20,16 @@ class SESR_Collapsed(hk.Module):
 
     def __call__(self,
                  inputs: jnp.ndarray):
-        first5x5 = LinearBlock(hidden_dim=self.hidden_dim,
-                               output_dim=self.f,
-                               kernel=5,
-                               name='first5x5')  # First 5x5 linear block
-        residual_blocks = hk.Sequential([ResidualLinearBlock(hidden_dim=self.hidden_dim,
-                                                             output_dim=self.f,
-                                                             kernel=3,
-                                                             name=f'lin_{i}')
-                                         for i in range(self.m)])  # M 3x3 residual linear blocks
-        last5x5 = LinearBlock(hidden_dim=self.hidden_dim,
-                              output_dim=self.scale ** 2,
-                              kernel=5,
+        first5x5 = hk.Conv2D(output_channels=self.f,
+                             kernel_shape=5,
+                             name='first5x5')  # First 5x5 linear block
+        residual_blocks = hk.Sequential(sum([[hk.Conv2D(output_channels=self.f,
+                                                   kernel_shape=3,
+                                                   name=f'conv_{i}'),
+                                         models.prelu.PReLU(name=f'prelu_{i}')]
+                                         for i in range(self.m)], []))  # M 3x3 residual linear blocks
+        last5x5 = hk.Conv2D(output_channels=self.scale ** 2,
+                              kernel_shape=5,
                               name='last5x5')  # Last 5x5 linear block
 
         a = first5x5(inputs)

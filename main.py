@@ -95,8 +95,7 @@ def main(unused_args):
     eval()
     logging.info("Training loop completed.")
 
-    with open('model.pkl', 'wb') as f:
-        pickle.dump({'params': state.params, 'opt_state': state.opt_state}, f)
+    jnp.savez('params.npz', state.params)
 
 
 if __name__ == "__main__":
