@@ -31,7 +31,7 @@ class TrainingState(NamedTuple):
     opt_state: optax.OptState
 
 
-def main():
+def main(unused_args):
     wandb_config = dict(
         seed=FLAGS.seed,
         epochs=FLAGS.epochs,
@@ -80,17 +80,20 @@ def main():
     # @jax.jit
     def eval(eval_batch: Batch):
         upscaled = network.apply(state.avg_params, eval_batch.lr)
+        mean_abs_error = mae(upscaled, eval_batch.hr)
+        psnr_val = psnr(upscaled, eval_batch.hr)
+        divergence = network.divergence(state.params, eval_batch.lr)
         wandb.log({"epoch": iteration // iterations_per_epoch,
                    "iteration": iteration,
-                   "mae (optimised)": float(mae(upscaled, eval_batch.hr)),
-                   "psnr": float(psnr(upscaled, eval_batch.hr)),
-                   "div": float(network.divergence(state.params, eval_batch.lr))
+                   "mae (optimised)": float(mean_abs_error),
+                   "psnr": float(psnr_val),
+                   "div": float(divergence)
                    })
         logging.info({"epoch": iteration // iterations_per_epoch,
                       "iteration": iteration,
-                      "mae (optimised)": f"{mae(upscaled, eval_batch.hr):.3f}",
-                      "psnr": f"{psnr(upscaled, eval_batch.hr):.3f}",
-                      "div": f"{network.divergence(state.params, eval_batch.lr)}"
+                      "mae (optimised)": f"{mean_abs_error:.3f}",
+                      "psnr": f"{psnr_val:.3f}",
+                      "div": f"{divergence}"
                       })
 
     # Make datasets.
