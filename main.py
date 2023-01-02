@@ -65,7 +65,8 @@ def main(unused_args):
     def eval():
         x = next(eval_dataset)
         upscaled = network.apply(state.avg_params, x.lr)
-        logging.info({"step": step,
+        logging.info({"epoch": epoch,
+                      "iteration": iteration,
                       "mae (optimised)": f"{mae(upscaled, x.hr):.3f}",
                       "psnr": f"{psnr(upscaled, x.hr):.3f}"
                       })
@@ -84,15 +85,18 @@ def main(unused_args):
     state = TrainingState(initial_params, initial_params, initial_opt_state)
 
     logging.info("Starting training loop.")
-    # Training & evaluation loop.
-    for step in range(FLAGS.epochs):
-        if step % 10 == 0:
-            eval()
+    for epoch in range(FLAGS.epochs):
+        logging.info(f"Starting epoch: {epoch}")
+        train_dataset, eval_dataset = get_dataset(dataset_name='div2k',
+                                                  super_res_factor=FLAGS.scale)
 
-        # Do SGD on a batch of training examples.
-        state = SGD(state, next(train_dataset))
+        iteration = 0
+        for batch in train_dataset:
+            if iteration % 10 == 0:
+                eval()
+            state = SGD(state, batch)
+            iteration += 1
 
-    eval()
     logging.info("Training loop completed.")
 
     jnp.savez('params.npz', state.params)
