@@ -36,5 +36,6 @@ class Model:
         return self.exp_transformed.init(*args, **self.kwargs)
 
     def apply(self, params, images):
-        return self.exp_transformed.apply(params, images, **self.kwargs)
-        #return self.col_transformed.apply(collapse(params, **self.kwargs), images, **self.kwargs)
+        # expanded = self.exp_transformed.apply(params, images, **self.kwargs)
+        collapsed = self.col_transformed.apply(collapse(params, **self.kwargs), images, **self.kwargs)
+        return collapsed

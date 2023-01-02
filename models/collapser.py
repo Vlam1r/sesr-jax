@@ -24,7 +24,6 @@ def collapse(params, m, f, hidden_dim, scale):
         final = collapsed + residual
         new_params[f'sesr/conv_{i}'] = wrap_no_bias(final)
         new_params[f'sesr/prelu_{i}'] = params[f'sesr/lin_{i}/prelu']
-        pass
 
     last5x5 = collapse_lb([params['sesr/last5x5/conv2_d'],
                            params['sesr/last5x5/conv2_d_1']], 5, hidden_dim, f, scale ** 2)
@@ -53,5 +52,6 @@ def collapse_res(w_c):
     outc, k = shape[3], shape[0]
     w_r = jnp.zeros(shape)
     idx = k // 2
-    w_r = w_r.at[idx, idx, :, :].set(1)
+    for i in range(outc):
+        w_r = w_r.at[idx, idx, i, i].set(1)
     return w_r
