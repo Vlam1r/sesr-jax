@@ -37,7 +37,7 @@ class SESR_Collapsed(hk.Module):
         c = last5x5(b)  # Second long residual connection
         d = inputs + c
         e = self.depth_to_space(d)
-        return e[:, jnp.newaxis]  # Add singleton channel
+        return jnp.clip(e[..., jnp.newaxis], a_min=0., a_max=1.)  # Add singleton channel and clips output
 
     def depth_to_space(self,
                        inputs: jnp.ndarray):

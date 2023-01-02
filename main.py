@@ -1,6 +1,5 @@
 import logging
-import pickle
-from typing import Iterator, NamedTuple
+from typing import NamedTuple
 
 from absl import app, flags
 import haiku as hk
@@ -29,7 +28,7 @@ class TrainingState(NamedTuple):
 def main(unused_args):
 
     network = models.model.Model(network='M11', should_collapse=FLAGS.collapse)
-    optimiser = optax.adam(1e-3)
+    optimiser = optax.amsgrad(1e-4)
     rng = jax.random.PRNGKey(seed=FLAGS.seed)
 
     @jax.jit
@@ -69,7 +68,8 @@ def main(unused_args):
         logging.info({"epoch": epoch,
                       "iteration": iteration,
                       "mae (optimised)": f"{mae(upscaled, x.hr):.3f}",
-                      "psnr": f"{psnr(upscaled, x.hr):.3f}"
+                      "psnr": f"{psnr(upscaled, x.hr):.3f}",
+                      "div": f"{network.divergence(state.params, x.lr)}"
                       })
 
 

@@ -10,7 +10,8 @@ def get_sesr_args(name: str):
     return {
         'M3':  {'m': 3,  'f': 16, 'hidden_dim': 256, 'scale': 2},
         'M5':  {'m': 5,  'f': 16, 'hidden_dim': 256, 'scale': 2},
-        'M11': {'m': 11, 'f': 16, 'hidden_dim': 256, 'scale': 2},  # TODO or f=32?
+        'M11': {'m': 11, 'f': 16, 'hidden_dim': 256, 'scale': 2},
+        'XL':  {'m': 11, 'f': 32, 'hidden_dim': 256, 'scale': 2},
         }.get(name)
 
 
@@ -41,3 +42,8 @@ class Model:
             return self.col_transformed.apply(collapse(params, **self.kwargs), images, **self.kwargs)
         else:
             return self.exp_transformed.apply(params, images, **self.kwargs)
+
+    def divergence(self, params, images):
+        exp = self.exp_transformed.apply(params, images, **self.kwargs)
+        col = self.col_transformed.apply(collapse(params, **self.kwargs), images, **self.kwargs)
+        return jnp.mean(jnp.abs(exp - col))

@@ -40,7 +40,6 @@ def collapse_lb(w, k, hidden_dim: int, n_in: int, n_out: int):
     delta = jnp.expand_dims(jnp.expand_dims(delta, 1), 1)
     pad = k // 2
     delta = jnp.pad(delta, pad_width=[[0, 0], [pad, pad], [pad, pad], [0, 0]])
-    # delta.shape = 1, 2k-1, 2k-1, 1
 
     new_w = {'net/conv2_d': w[0], 'net/conv2_d_1': w[1]}
     lb = hk.without_apply_rng(hk.transform(lambda x: LinearBlock(kernel=k, output_dim=n_out, hidden_dim=hidden_dim)(x)))
