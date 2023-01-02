@@ -1,10 +1,9 @@
 import haiku as hk
-import jax
 import jax.numpy as jnp
 from models.linear_block import LinearBlock, ResidualLinearBlock
 
 
-class SESR(hk.Module):
+class SESR_Collapsed(hk.Module):
     def __init__(self,
                  m: int,
                  f: int,
