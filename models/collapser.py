@@ -1,10 +1,12 @@
 import haiku as hk
 import jax.numpy as jnp
 import jax
+from functools import partial
 
 from models.linear_block import LinearBlock
 
 
+@jax.jit
 def wrap_no_bias(w):
     return {
         'w': w,
@@ -12,6 +14,7 @@ def wrap_no_bias(w):
     }
 
 
+@partial(jax.jit, static_argnames=['m', 'f', 'hidden_dim', 'scale'])
 def collapse(params, m, f, hidden_dim, scale):
     new_params = {}
     first5x5 = collapse_lb([params['sesr/first5x5/conv2_d'],
@@ -31,6 +34,7 @@ def collapse(params, m, f, hidden_dim, scale):
     return new_params
 
 
+@partial(jax.jit, static_argnames=['k', 'hidden_dim', 'n_in', 'n_out'])
 def collapse_lb(w, k, hidden_dim: int, n_in: int, n_out: int):
     delta = jnp.eye(n_in)
     delta = jnp.expand_dims(jnp.expand_dims(delta, 1), 1)
@@ -47,6 +51,7 @@ def collapse_lb(w, k, hidden_dim: int, n_in: int, n_out: int):
     return w_c
 
 
+@jax.jit
 def collapse_res(w_c):
     shape = w_c.shape
     outc, k = shape[3], shape[0]

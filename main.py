@@ -16,6 +16,7 @@ tf.config.run_functions_eagerly(False)
 flags.DEFINE_integer('seed', 42, 'Random seed to set')
 flags.DEFINE_integer('epochs', 300, 'Number of epochs to train')
 flags.DEFINE_integer('scale', 2, 'Scaling factor')
+flags.DEFINE_boolean('collapse', True, 'Use collapsed model in forward pass')
 FLAGS = flags.FLAGS
 
 
@@ -27,7 +28,7 @@ class TrainingState(NamedTuple):
 
 def main(unused_args):
 
-    network = models.model.Model(network='M11')
+    network = models.model.Model(network='M11', should_collapse=FLAGS.collapse)
     optimiser = optax.adam(1e-3)
     rng = jax.random.PRNGKey(seed=FLAGS.seed)
 

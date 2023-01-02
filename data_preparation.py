@@ -90,7 +90,7 @@ def get_dataset(dataset_name: str,
                               num_crops=num_crops_per_image)
     ds_train = ds_train.map(rgb_to_y).map(remove_dict).map(random_crops_fn).unbatch().shuffle(buffer_size=10000).batch(
         batch_size) # TODO: Prefetch?
-    ds_val = ds_val.map(rgb_to_y).map(remove_dict).map(random_crops_fn).unbatch().batch(10)
+    ds_val = ds_val.map(rgb_to_y).map(remove_dict).map(random_crops_fn).unbatch().batch(batch_size)
 
 
     ds_train = ds_train.map(lambda lr, hr: Batch(lr=lr, hr=hr))

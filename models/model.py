@@ -24,10 +24,11 @@ class Model:
         net = self.collapsed(**kwargs)
         return net(images)
 
-    def __init__(self, network: str):
+    def __init__(self, network: str, should_collapse: bool):
         self.kwargs = get_sesr_args(network)
         self.expanded = sesr.SESR
         self.collapsed = sesr_c.SESR_Collapsed
+        self.should_collapse = should_collapse
         self.exp_transformed = hk.without_apply_rng(hk.transform(self.expanded_fn))
         self.col_transformed = hk.without_apply_rng(hk.transform(self.collapsed_fn))
 
@@ -36,6 +37,7 @@ class Model:
         return self.exp_transformed.init(*args, **self.kwargs)
 
     def apply(self, params, images):
-        # expanded = self.exp_transformed.apply(params, images, **self.kwargs)
-        collapsed = self.col_transformed.apply(collapse(params, **self.kwargs), images, **self.kwargs)
-        return collapsed
+        if self.should_collapse:
+            return self.col_transformed.apply(collapse(params, **self.kwargs), images, **self.kwargs)
+        else:
+            return self.exp_transformed.apply(params, images, **self.kwargs)
