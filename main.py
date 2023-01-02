@@ -1,22 +1,28 @@
 import logging
 from typing import NamedTuple
-
 from absl import app, flags
 import haiku as hk
 import jax
 import jax.numpy as jnp
 import optax
+import tensorflow_datasets as tfds
+import math
 import models.model
+import wandb
 from data_preparation import get_dataset, Batch
-
 import tensorflow as tf
+
 tf.config.run_functions_eagerly(False)
 
 flags.DEFINE_integer('seed', 42, 'Random seed to set')
 flags.DEFINE_integer('epochs', 300, 'Number of epochs to train')
+flags.DEFINE_integer('batch_size', 32, 'Batch size for training')
+flags.DEFINE_integer('num_crops_per_image', 64, 'Number of random crops to take from each image')
 flags.DEFINE_integer('scale', 2, 'Scaling factor')
+flags.DEFINE_string('model', 'M11', 'Model to train')
 flags.DEFINE_boolean('collapse', True, 'Use collapsed model in forward pass')
 FLAGS = flags.FLAGS
+NUM_TRAINING_IMAGES = 800
 
 
 class TrainingState(NamedTuple):
@@ -25,9 +31,19 @@ class TrainingState(NamedTuple):
     opt_state: optax.OptState
 
 
-def main(unused_args):
+def main():
+    wandb_config = dict(
+        seed=FLAGS.seed,
+        epochs=FLAGS.epochs,
+        batch_size=FLAGS.batch_size,
+        num_crops_per_image=FLAGS.num_crops_per_image,
+        scale=FLAGS.scale,
+        model=FLAGS.model,
+        collapse=FLAGS.collapse
+    )
+    wandb.init(project="SESR-Jax", config=wandb_config)
 
-    network = models.model.Model(network='M11', should_collapse=FLAGS.collapse)
+    network = models.model.Model(network=FLAGS.model, should_collapse=FLAGS.collapse)
     optimiser = optax.amsgrad(1e-4)
     rng = jax.random.PRNGKey(seed=FLAGS.seed)
 
@@ -62,44 +78,50 @@ def main(unused_args):
         return TrainingState(params, avg_params, opt_state)
 
     # @jax.jit
-    def eval():
-        x = next(eval_dataset)
-        upscaled = network.apply(state.avg_params, x.lr)
-        logging.info({"epoch": epoch,
+    def eval(eval_batch: Batch):
+        upscaled = network.apply(state.avg_params, eval_batch.lr)
+        wandb.log({"epoch": iteration // iterations_per_epoch,
+                   "iteration": iteration,
+                   "mae (optimised)": float(mae(upscaled, eval_batch.hr)),
+                   "psnr": float(psnr(upscaled, eval_batch.hr)),
+                   "div": float(network.divergence(state.params, eval_batch.lr))
+                   })
+        logging.info({"epoch": iteration // iterations_per_epoch,
                       "iteration": iteration,
-                      "mae (optimised)": f"{mae(upscaled, x.hr):.3f}",
-                      "psnr": f"{psnr(upscaled, x.hr):.3f}",
-                      "div": f"{network.divergence(state.params, x.lr)}"
+                      "mae (optimised)": f"{mae(upscaled, eval_batch.hr):.3f}",
+                      "psnr": f"{psnr(upscaled, eval_batch.hr):.3f}",
+                      "div": f"{network.divergence(state.params, eval_batch.lr)}"
                       })
-
-
 
     # Make datasets.
     rng, new_rng = jax.random.split(rng)
     train_dataset, eval_dataset = get_dataset(dataset_name='div2k',
-                                              super_res_factor=FLAGS.scale)
+                                              super_res_factor=FLAGS.scale,
+                                              batch_size=FLAGS.batch_size,
+                                              num_crops_per_image=FLAGS.num_crops_per_image,
+                                              epochs=FLAGS.epochs)
+    eval_dataset = list(eval_dataset.take(1).as_numpy_iterator())[0]
     logging.info("Created datasets.")
 
     # Initialise network and optimiser; note we draw an input to get shapes.
-    initial_params = network.init(rng, next(train_dataset).lr)
+    initial_params = network.init(rng, list(train_dataset.take(1).as_numpy_iterator())[0].lr)
     initial_opt_state = optimiser.init(initial_params)
     state = TrainingState(initial_params, initial_params, initial_opt_state)
 
-    logging.info("Starting training loop.")
-    for epoch in range(FLAGS.epochs):
-        logging.info(f"Starting epoch: {epoch}")
-        train_dataset, eval_dataset = get_dataset(dataset_name='div2k',
-                                                  super_res_factor=FLAGS.scale)
+    # Convert dataset to numpy for compatability with Jax
+    train_dataset = tfds.as_numpy(train_dataset)
 
-        iteration = 0
-        for batch in train_dataset:
-            if iteration % 10 == 0:
-                eval()
-            state = SGD(state, batch)
-            iteration += 1
+    iterations_per_epoch = math.ceil(NUM_TRAINING_IMAGES * FLAGS.num_crops_per_image / FLAGS.batch_size)
+    iteration = 0
+
+    logging.info("Starting training loop.")
+    for batch in train_dataset:
+        if iteration % 10 == 0:
+            eval(eval_dataset)
+        state = SGD(state, batch)
+        iteration += 1
 
     logging.info("Training loop completed.")
-
     jnp.savez('params.npz', state.params)
 
 
