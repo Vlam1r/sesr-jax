@@ -16,25 +16,21 @@ def wrap_no_bias(w):
         }
 
 
-@partial(jax.jit, static_argnames=['collapser'])
-def collapse(expanded_params, collapser):
-    params = list(expanded_params.items())
-    # First collapse each param by feeding delta through collapser
-    params = [(tup[0], collapser[idx][1].apply(tup[1], collapser[idx][2])) for idx, tup in enumerate(
-        params)]
-    # Also reshape
-    params = [(p[0], jnp.transpose(jnp.flip(p[1], (1, 2)), [1, 2, 0, 3])) for p in params]
-    # Second add residuals if needed
+@jax.jit
+def collapse(params):
+
+    params = [jnp.transpose(jnp.flip(p, (1, 2)), [1, 2, 0, 3]) for p in params]
+
     for i in range(1, len(params) - 1):
-        residual = collapse_res(params[i][1])
-        params[i] = params[i][0], params[i][1] + residual
-    # Third add empty bias
-    params = [(tup[0], wrap_no_bias(tup[1])) for tup in params]
+        residual = collapse_res(params[i])
+        params[i] = params[i] + residual
 
-    return {tup[0]: tup[1] for tup in params}
+    params = [wrap_no_bias(p) for p in params]
+
+    return params
 
 
-# @jax.jit
+@partial(jax.jit, static_argnames=['n_in', 'k'])
 def make_delta(n_in: int, k: int) -> jnp.ndarray:
     delta = jnp.eye(n_in)
     delta = jnp.expand_dims(jnp.expand_dims(delta, 1), 1)

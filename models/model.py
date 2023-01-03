@@ -34,10 +34,19 @@ class Model:
             rng, new_rng = jax.random.split(rng)
             v = c.init(new_rng, delta)
             out[k] = v
-        self.update(out)
         # _ = self.net.init(rng, image)
         return out
 
     def forward(self, params, images):
-        return self.net.apply(collapse(params, self.collapser), images)
+        return self.net.apply(self.collapse(params), images)
 
+    def collapse(self, params):
+        params = list(params.items())
+        names = [tup[0] for tup in params]
+        weights = [self.collapser_map[tup[0]][0].apply(tup[1], self.collapser_map [tup[0]][1]) for tup in params]
+        weights = collapse(weights)
+        params = dict(zip(names, weights))
+        return params
+
+    def forward_direct(self, params, images):
+        return self.net.apply(params, images)

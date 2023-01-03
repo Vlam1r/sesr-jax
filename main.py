@@ -10,9 +10,6 @@ import math
 import models.model
 import wandb
 from data_preparation import get_dataset, Batch
-import tensorflow as tf
-
-tf.config.run_functions_eagerly(False)
 
 flags.DEFINE_integer('seed', 42, 'Random seed to set')
 flags.DEFINE_integer('epochs', 300, 'Number of epochs to train')
@@ -60,7 +57,7 @@ def main(unused_args):
         upscaled = network.forward(params, batch.lr)
         return mae(batch.hr, upscaled)
 
-    # @jax.jit
+    @jax.jit
     def SGD(state: TrainingState, batch: Batch) -> TrainingState:
         """Learning rule (stochastic gradient descent)."""
         grads = jax.grad(loss)(state.params, batch)
@@ -68,7 +65,6 @@ def main(unused_args):
         params = optax.apply_updates(state.params, updates)
         return TrainingState(params, opt_state)
 
-    # @jax.jit
     def eval(eval_dataset):
         batch_mean_abs_errors = []
         batch_psnr_vals = []
