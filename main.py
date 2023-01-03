@@ -38,7 +38,7 @@ def main(unused_args):
     wandb.init(project="SESR-Jax", entity="sesr-jax", config=wandb_config)
 
     network = models.model.Model(network=FLAGS.model)
-    optimiser = optax.amsgrad(1e-4)
+    optimiser = optax.amsgrad(5e-4)
     rng = jax.random.PRNGKey(seed=FLAGS.seed)
 
     @jax.jit
@@ -118,7 +118,7 @@ def main(unused_args):
         iteration += 1
 
     logging.info("Training loop completed.")
-    jnp.savez('params.npz', state.params)
+    jnp.savez(f'params_{FLAGS.model}_{FLAGS.epochs}.npz', state.params)
 
 
 if __name__ == "__main__":
