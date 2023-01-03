@@ -24,16 +24,10 @@ def rgb_to_ycbcr(rgb: tf.Tensor) -> tf.Tensor:
 
 
 #Get the Y-Channel only
-def rgb_to_y(example: tfds.features.FeaturesDict) -> Dict[str, tf.Tensor]:
+def rgb_to_y(example: tfds.features.FeaturesDict) -> Tuple[tf.Tensor, tf.Tensor]:
     lr_ycbcr = rgb_to_ycbcr(example['lr'])
     hr_ycbcr = rgb_to_ycbcr(example['hr'])
-    return {'lr': lr_ycbcr[..., 0:1] / 255., 'hr': hr_ycbcr[..., 0:1] / 255.}
-
-
-def remove_dict(example: tfds.features.FeaturesDict) -> Tuple[tf.Tensor, tf.Tensor]:
-    lr = example['lr']
-    hr = example['hr']
-    return lr, hr
+    return lr_ycbcr[..., 0:1] / 255., hr_ycbcr[..., 0:1] / 255.
 
 
 def random_crop(low_res_img, high_res_img, low_res_crop_size, super_res_factor):
@@ -75,30 +69,31 @@ def get_dataset(dataset_name: str,
                 batch_size: int = 32,
                 low_res_crop_size: int = 64,
                 super_res_factor: int = 2,
-                num_crops_per_image: int = 64) -> Tuple[Iterable[np.ndarray], Iterable[np.ndarray]]:
+                num_crops_per_image: int = 64,
+                epochs: int = 300):
     """
     :param dataset_name: name of TensorFlow dataset to use e.g. div2k/bicubic_x2
     :param batch_size: batch size to use for training dataset
     :param low_res_crop_size: size of cropped patches of low res images (e.g. 64 will extract patches of size 64x64)
     :param super_res_factor: factor of super-resolution, for div2k/bicubic_x2 this is 2
     :param num_crops_per_image: number of cropped patches to extract per image
+    :param epochs: number of epochs for training data
     :return: training dataset, validation dataset
     """
     dataset_dir = DATA_DIR
     ds_train, ds_val = tfds.load(dataset_name, split=["train", "validation"], shuffle_files=True, data_dir=dataset_dir)
     random_crops_fn = partial(get_random_crops, low_res_crop_size=low_res_crop_size, super_res_factor=super_res_factor,
                               num_crops=num_crops_per_image)
-    ds_train = ds_train.map(rgb_to_y).map(remove_dict).map(random_crops_fn).unbatch().shuffle(buffer_size=10000).batch(
-        batch_size) # TODO: Prefetch?
-    ds_val = ds_val.map(rgb_to_y).map(remove_dict).map(random_crops_fn).unbatch().batch(batch_size)
+    val_random_crops_fn = partial(get_random_crops, low_res_crop_size=low_res_crop_size, super_res_factor=super_res_factor,
+                              num_crops=32)  # Fewer crops to reduce time spent evaluating
+    ds_train = ds_train.map(rgb_to_y).map(random_crops_fn).unbatch().shuffle(buffer_size=10000).batch(
+        batch_size).repeat(epochs)
+    ds_val = ds_val.map(rgb_to_y).map(val_random_crops_fn).unbatch().batch(batch_size)
 
 
-    ds_train = ds_train.map(lambda lr, hr: Batch(lr=lr, hr=hr))
-    ds_val = ds_val.map(lambda lr, hr: Batch(lr=lr, hr=hr))
+    ds_train = ds_train.map(lambda lr, hr: Batch(lr=lr, hr=hr)).prefetch(tf.data.AUTOTUNE)
+    ds_val = ds_val.map(lambda lr, hr: Batch(lr=lr, hr=hr)).prefetch(tf.data.AUTOTUNE)
 
-    return iter(tfds.as_numpy(ds_train)), iter(tfds.as_numpy(ds_val))
+    return ds_train, ds_val
 
-
-if __name__ == "__main__":
-    a, b = get_dataset("div2k/bicubic_x2")
 

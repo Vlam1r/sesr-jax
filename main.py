@@ -1,22 +1,28 @@
 import logging
 from typing import NamedTuple
-
 from absl import app, flags
 import haiku as hk
 import jax
 import jax.numpy as jnp
 import optax
+import tensorflow_datasets as tfds
+import math
 import models.model
+import wandb
 from data_preparation import get_dataset, Batch
-
 import tensorflow as tf
+
 tf.config.run_functions_eagerly(False)
 
 flags.DEFINE_integer('seed', 42, 'Random seed to set')
-flags.DEFINE_integer('epochs', 10, 'Number of epochs to train')
+flags.DEFINE_integer('epochs', 300, 'Number of epochs to train')
+flags.DEFINE_integer('batch_size', 32, 'Batch size for training')
+flags.DEFINE_integer('num_crops_per_image', 64, 'Number of random crops to take from each image')
 flags.DEFINE_integer('scale', 2, 'Scaling factor')
+flags.DEFINE_string('model', 'M11', 'Model to train')
 flags.DEFINE_boolean('collapse', True, 'Use collapsed model in forward pass')
 FLAGS = flags.FLAGS
+NUM_TRAINING_IMAGES = 800
 
 
 class TrainingState(NamedTuple):
@@ -26,8 +32,18 @@ class TrainingState(NamedTuple):
 
 
 def main(unused_args):
+    wandb_config = dict(
+        seed=FLAGS.seed,
+        epochs=FLAGS.epochs,
+        batch_size=FLAGS.batch_size,
+        num_crops_per_image=FLAGS.num_crops_per_image,
+        scale=FLAGS.scale,
+        model=FLAGS.model,
+        collapse=FLAGS.collapse
+    )
+    wandb.init(project="SESR-Jax", config=wandb_config)
 
-    network = models.model.Model(network='M11', should_collapse=FLAGS.collapse)
+    network = models.model.Model(network=FLAGS.model, should_collapse=FLAGS.collapse)
     optimiser = optax.amsgrad(1e-4)
     rng = jax.random.PRNGKey(seed=FLAGS.seed)
 
@@ -59,42 +75,63 @@ def main(unused_args):
             params, state.avg_params, step_size=0.001)
         return TrainingState(params, avg_params, opt_state)
 
-    def eval():
-        x = next(eval_dataset)
-        upscaled = network.apply(state.avg_params, x.lr)
-        logging.info({"epoch": epoch,
-                      "iteration": iteration,
-                      "mae (optimised)": f"{mae(upscaled, x.hr):.5f}",
-                      "psnr": f"{psnr(upscaled, x.hr):.2f}",
-                      # "div": f"{network.divergence(state.params, x.lr)}"
+    # @jax.jit
+    def eval(eval_dataset):
+        batch_mean_abs_errors = []
+        batch_psnr_vals = []
+        divergence_vals = []
+        for batch in eval_dataset:
+            batch_upscaled = network.apply(state.avg_params, batch.lr)
+            batch_mean_abs_errors.append(mae(batch_upscaled, batch.hr))
+            batch_psnr_vals.append(psnr(batch_upscaled, batch.hr))
+            divergence_vals.append(network.divergence(state.params, batch.lr))
+        mean_abs_error = jnp.mean(jnp.array(batch_mean_abs_errors))
+        psnr_val = jnp.mean(jnp.array(batch_psnr_vals))
+        divergence = jnp.mean(jnp.array(divergence_vals))
+
+        wandb.log({"epoch": iteration // iterations_per_epoch,
+                   "iteration": iteration % iterations_per_epoch,
+                   "mae (optimised)": float(mean_abs_error),
+                   "psnr": float(psnr_val),
+                   "div": float(divergence)
+                   })
+        logging.info({"epoch": iteration // iterations_per_epoch,
+                      "iteration": iteration % iterations_per_epoch,
+                      "mae (optimised)": f"{mean_abs_error:.5f}",
+                      "psnr": f"{psnr_val:.3f}",
+                      #"div": f"{divergence}"
                       })
 
     # Make datasets.
     rng, new_rng = jax.random.split(rng)
     train_dataset, eval_dataset = get_dataset(dataset_name='div2k',
-                                              super_res_factor=FLAGS.scale)
+                                              super_res_factor=FLAGS.scale,
+                                              batch_size=FLAGS.batch_size,
+                                              num_crops_per_image=FLAGS.num_crops_per_image,
+                                              epochs=FLAGS.epochs)
     logging.info("Created datasets.")
 
     # Initialise network and optimiser; note we draw an input to get shapes.
-    initial_params = network.init(rng, next(train_dataset).lr)
+    initial_params = network.init(rng, list(train_dataset.take(1).as_numpy_iterator())[0].lr)
     initial_opt_state = optimiser.init(initial_params)
     state = TrainingState(initial_params, initial_params, initial_opt_state)
 
-    logging.info("Starting training loop.")
-    for epoch in range(FLAGS.epochs):
-        logging.info(f"Starting epoch: {epoch}")
-        train_dataset, eval_dataset = get_dataset(dataset_name='div2k',
-                                                  super_res_factor=FLAGS.scale)
+    # Convert datasets to numpy for compatability with Jax
+    train_dataset = tfds.as_numpy(train_dataset)
+    eval_dataset = tfds.as_numpy(eval_dataset)
 
-        iteration = 0
-        for batch in train_dataset:
-            if iteration % 100 == 0:
-                eval()
-            state = SGD(state, batch)
-            iteration += 1
+    iterations_per_epoch = math.ceil(NUM_TRAINING_IMAGES * FLAGS.num_crops_per_image / FLAGS.batch_size)
+    iteration = 0
+
+    logging.info("Starting training loop.")
+    for batch in train_dataset:
+        if iteration % iterations_per_epoch == 0:
+            # Evaluate performance at the start of each epoch
+            eval(eval_dataset)
+        state = SGD(state, batch)
+        iteration += 1
 
     logging.info("Training loop completed.")
-
     jnp.savez('params.npz', state.params)
 
 
