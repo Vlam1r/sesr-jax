@@ -78,19 +78,27 @@ def main(unused_args):
         return TrainingState(params, avg_params, opt_state)
 
     # @jax.jit
-    def eval(eval_batch: Batch):
-        upscaled = network.apply(state.avg_params, eval_batch.lr)
-        mean_abs_error = mae(upscaled, eval_batch.hr)
-        psnr_val = psnr(upscaled, eval_batch.hr)
-        divergence = network.divergence(state.params, eval_batch.lr)
+    def eval(eval_dataset):
+        batch_mean_abs_errors = []
+        batch_psnr_vals = []
+        divergence_vals = []
+        for batch in eval_dataset:
+            batch_upscaled = network.apply(state.avg_params, batch.lr)
+            batch_mean_abs_errors.append(mae(batch_upscaled, batch.hr))
+            batch_psnr_vals.append(psnr(batch_upscaled, batch.hr))
+            divergence_vals.append(network.divergence(state.params, batch.lr))
+        mean_abs_error = jnp.mean(jnp.array(batch_mean_abs_errors))
+        psnr_val = jnp.mean(jnp.array(batch_psnr_vals))
+        divergence = jnp.mean(jnp.array(divergence_vals))
+
         wandb.log({"epoch": iteration // iterations_per_epoch,
-                   "iteration": iteration,
+                   "iteration": iteration % iterations_per_epoch,
                    "mae (optimised)": float(mean_abs_error),
                    "psnr": float(psnr_val),
                    "div": float(divergence)
                    })
         logging.info({"epoch": iteration // iterations_per_epoch,
-                      "iteration": iteration,
+                      "iteration": iteration % iterations_per_epoch,
                       "mae (optimised)": f"{mean_abs_error:.3f}",
                       "psnr": f"{psnr_val:.3f}",
                       "div": f"{divergence}"
@@ -103,7 +111,6 @@ def main(unused_args):
                                               batch_size=FLAGS.batch_size,
                                               num_crops_per_image=FLAGS.num_crops_per_image,
                                               epochs=FLAGS.epochs)
-    eval_dataset = list(eval_dataset.take(1).as_numpy_iterator())[0]
     logging.info("Created datasets.")
 
     # Initialise network and optimiser; note we draw an input to get shapes.
@@ -111,15 +118,17 @@ def main(unused_args):
     initial_opt_state = optimiser.init(initial_params)
     state = TrainingState(initial_params, initial_params, initial_opt_state)
 
-    # Convert dataset to numpy for compatability with Jax
+    # Convert datasets to numpy for compatability with Jax
     train_dataset = tfds.as_numpy(train_dataset)
+    eval_dataset = tfds.as_numpy(eval_dataset)
 
     iterations_per_epoch = math.ceil(NUM_TRAINING_IMAGES * FLAGS.num_crops_per_image / FLAGS.batch_size)
     iteration = 0
 
     logging.info("Starting training loop.")
     for batch in train_dataset:
-        if iteration % 10 == 0:
+        if iteration % iterations_per_epoch == 0:
+            # Evaluate performance at the start of each epoch
             eval(eval_dataset)
         state = SGD(state, batch)
         iteration += 1

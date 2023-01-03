@@ -84,9 +84,11 @@ def get_dataset(dataset_name: str,
     ds_train, ds_val = tfds.load(dataset_name, split=["train", "validation"], shuffle_files=True, data_dir=dataset_dir)
     random_crops_fn = partial(get_random_crops, low_res_crop_size=low_res_crop_size, super_res_factor=super_res_factor,
                               num_crops=num_crops_per_image)
+    val_random_crops_fn = partial(get_random_crops, low_res_crop_size=low_res_crop_size, super_res_factor=super_res_factor,
+                              num_crops=32)  # Fewer crops to reduce time spent evaluating
     ds_train = ds_train.map(rgb_to_y).map(random_crops_fn).unbatch().shuffle(buffer_size=10000).batch(
         batch_size).repeat(epochs)
-    ds_val = ds_val.map(rgb_to_y).map(random_crops_fn).unbatch().batch(100)  # 100 validation images in div2k dataset
+    ds_val = ds_val.map(rgb_to_y).map(val_random_crops_fn).unbatch().batch(batch_size)
 
 
     ds_train = ds_train.map(lambda lr, hr: Batch(lr=lr, hr=hr)).prefetch(tf.data.AUTOTUNE)
