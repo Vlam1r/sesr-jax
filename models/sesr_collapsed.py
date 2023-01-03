@@ -1,4 +1,5 @@
 import haiku as hk
+import jax.nn
 import jax.numpy as jnp
 
 import models.prelu
@@ -22,15 +23,15 @@ class SESR_Collapsed(hk.Module):
                  inputs: jnp.ndarray):
         first5x5 = hk.Conv2D(output_channels=self.f,
                              kernel_shape=5,
-                             name='first5x5')  # First 5x5 linear block
+                             name='a')  # First 5x5 linear block
         residual_blocks = hk.Sequential(sum([[hk.Conv2D(output_channels=self.f,
                                                    kernel_shape=3,
-                                                   name=f'conv_{i}'),
-                                         models.prelu.PReLU(name=f'prelu_{i}')]
+                                                   name=f'b_{i:02d}'),
+                                        jax.nn.relu]
                                          for i in range(self.m)], []))  # M 3x3 residual linear blocks
         last5x5 = hk.Conv2D(output_channels=self.scale ** 2,
                               kernel_shape=5,
-                              name='last5x5')  # Last 5x5 linear block
+                              name='c')  # Last 5x5 linear block
 
         a = first5x5(inputs)
         b = a + residual_blocks(a)  # First long residual connection

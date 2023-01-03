@@ -20,14 +20,12 @@ flags.DEFINE_integer('batch_size', 32, 'Batch size for training')
 flags.DEFINE_integer('num_crops_per_image', 64, 'Number of random crops to take from each image')
 flags.DEFINE_integer('scale', 2, 'Scaling factor')
 flags.DEFINE_string('model', 'M11', 'Model to train')
-flags.DEFINE_boolean('collapse', True, 'Use collapsed model in forward pass')
 FLAGS = flags.FLAGS
 NUM_TRAINING_IMAGES = 800
 
 
 class TrainingState(NamedTuple):
     params: hk.Params
-    avg_params: hk.Params
     opt_state: optax.OptState
 
 
@@ -38,12 +36,11 @@ def main(unused_args):
         batch_size=FLAGS.batch_size,
         num_crops_per_image=FLAGS.num_crops_per_image,
         scale=FLAGS.scale,
-        model=FLAGS.model,
-        collapse=FLAGS.collapse
+        model=FLAGS.model
     )
     wandb.init(project="SESR-Jax", entity="sesr-jax", config=wandb_config)
 
-    network = models.model.Model(network=FLAGS.model, should_collapse=FLAGS.collapse)
+    network = models.model.Model(network=FLAGS.model)
     optimiser = optax.amsgrad(1e-4)
     rng = jax.random.PRNGKey(seed=FLAGS.seed)
 
@@ -60,20 +57,16 @@ def main(unused_args):
     @jax.jit
     def loss(params: hk.Params, batch: Batch) -> jnp.ndarray:
         """Mean absolute error loss."""
-        upscaled = network.apply(params, batch.lr)
+        upscaled = network.forward(params, batch.lr)
         return mae(batch.hr, upscaled)
 
-    @jax.jit
+    # @jax.jit
     def SGD(state: TrainingState, batch: Batch) -> TrainingState:
         """Learning rule (stochastic gradient descent)."""
         grads = jax.grad(loss)(state.params, batch)
         updates, opt_state = optimiser.update(grads, state.opt_state)
         params = optax.apply_updates(state.params, updates)
-        # Compute avg_params, the exponential moving average of the "live" params.
-        # We use this only for evaluation (cf. https://doi.org/10.1137/0330046).
-        avg_params = optax.incremental_update(
-            params, state.avg_params, step_size=0.001)
-        return TrainingState(params, avg_params, opt_state)
+        return TrainingState(params, opt_state)
 
     # @jax.jit
     def eval(eval_dataset):
@@ -81,10 +74,9 @@ def main(unused_args):
         batch_psnr_vals = []
         divergence_vals = []
         for batch in eval_dataset:
-            batch_upscaled = network.apply(state.avg_params, batch.lr)
+            batch_upscaled = network.forward(state.params, batch.lr)
             batch_mean_abs_errors.append(mae(batch_upscaled, batch.hr))
             batch_psnr_vals.append(psnr(batch_upscaled, batch.hr))
-            divergence_vals.append(network.divergence(state.params, batch.lr))
         mean_abs_error = jnp.mean(jnp.array(batch_mean_abs_errors))
         psnr_val = jnp.mean(jnp.array(batch_psnr_vals))
         divergence = jnp.mean(jnp.array(divergence_vals))
@@ -99,11 +91,9 @@ def main(unused_args):
                       "iteration": iteration % iterations_per_epoch,
                       "mae (optimised)": f"{mean_abs_error:.5f}",
                       "psnr": f"{psnr_val:.3f}",
-                      #"div": f"{divergence}"
                       })
 
     # Make datasets.
-    rng, new_rng = jax.random.split(rng)
     train_dataset, eval_dataset = get_dataset(dataset_name='div2k',
                                               super_res_factor=FLAGS.scale,
                                               batch_size=FLAGS.batch_size,
@@ -114,7 +104,7 @@ def main(unused_args):
     # Initialise network and optimiser; note we draw an input to get shapes.
     initial_params = network.init(rng, list(train_dataset.take(1).as_numpy_iterator())[0].lr)
     initial_opt_state = optimiser.init(initial_params)
-    state = TrainingState(initial_params, initial_params, initial_opt_state)
+    state = TrainingState(initial_params, initial_opt_state)
 
     # Convert datasets to numpy for compatability with Jax
     train_dataset = tfds.as_numpy(train_dataset)

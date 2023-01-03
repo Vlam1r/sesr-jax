@@ -1,6 +1,6 @@
 import haiku as hk
 import jax.numpy as jnp
-import models.prelu
+import jax
 
 
 class LinearBlock(hk.Module):
@@ -16,8 +16,8 @@ class LinearBlock(hk.Module):
 
     def __call__(self,
                  inputs: jnp.ndarray):
-        conv1 = hk.Conv2D(output_channels=self.hidden_dim, kernel_shape=self.kernel, with_bias=False)
-        conv2 = hk.Conv2D(output_channels=self.output_dim, kernel_shape=1, with_bias=False)
+        conv1 = hk.Conv2D(output_channels=self.hidden_dim, kernel_shape=self.kernel, padding='VALID')
+        conv2 = hk.Conv2D(output_channels=self.output_dim, kernel_shape=1, padding='VALID')
 
         return conv2(conv1(inputs))
 
@@ -25,7 +25,7 @@ class LinearBlock(hk.Module):
 class ResidualLinearBlock(LinearBlock):
     def __call__(self,
                  inputs: jnp.ndarray):
-        act = models.prelu.PReLU()
+        act = jax.nn.relu
         out = super().__call__(inputs)
 
         return act(inputs + out)
