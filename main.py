@@ -41,7 +41,7 @@ def main(unused_args):
         model=FLAGS.model,
         collapse=FLAGS.collapse
     )
-    wandb.init(project="SESR-Jax", config=wandb_config)
+    wandb.init(project="SESR-Jax", entity="sesr-jax", config=wandb_config)
 
     network = models.model.Model(network=FLAGS.model, should_collapse=FLAGS.collapse)
     optimiser = optax.amsgrad(1e-4)
