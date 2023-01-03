@@ -13,7 +13,7 @@ import tensorflow as tf
 tf.config.run_functions_eagerly(False)
 
 flags.DEFINE_integer('seed', 42, 'Random seed to set')
-flags.DEFINE_integer('epochs', 300, 'Number of epochs to train')
+flags.DEFINE_integer('epochs', 10, 'Number of epochs to train')
 flags.DEFINE_integer('scale', 2, 'Scaling factor')
 flags.DEFINE_boolean('collapse', True, 'Use collapsed model in forward pass')
 FLAGS = flags.FLAGS
@@ -36,11 +36,9 @@ def main(unused_args):
         z = jnp.mean(jnp.abs(x - y))
         return z
 
-    # @jax.jit
+    @jax.jit
     def psnr(x, y):
         mse = jnp.mean((x - y) ** 2)
-        if mse == 0:
-            return float('inf')
         return 20 * jnp.log10(1 / jnp.sqrt(mse))
 
     @jax.jit
@@ -61,18 +59,15 @@ def main(unused_args):
             params, state.avg_params, step_size=0.001)
         return TrainingState(params, avg_params, opt_state)
 
-    # @jax.jit
     def eval():
         x = next(eval_dataset)
         upscaled = network.apply(state.avg_params, x.lr)
         logging.info({"epoch": epoch,
                       "iteration": iteration,
-                      "mae (optimised)": f"{mae(upscaled, x.hr):.3f}",
-                      "psnr": f"{psnr(upscaled, x.hr):.3f}",
-                      "div": f"{network.divergence(state.params, x.lr)}"
+                      "mae (optimised)": f"{mae(upscaled, x.hr):.5f}",
+                      "psnr": f"{psnr(upscaled, x.hr):.2f}",
+                      # "div": f"{network.divergence(state.params, x.lr)}"
                       })
-
-
 
     # Make datasets.
     rng, new_rng = jax.random.split(rng)
@@ -93,7 +88,7 @@ def main(unused_args):
 
         iteration = 0
         for batch in train_dataset:
-            if iteration % 10 == 0:
+            if iteration % 100 == 0:
                 eval()
             state = SGD(state, batch)
             iteration += 1

@@ -1,5 +1,7 @@
+import jax
 import jax.numpy as jnp
 import haiku as hk
+
 
 import models.sesr as sesr
 import models.sesr_collapsed as sesr_c
@@ -34,7 +36,6 @@ class Model:
         self.col_transformed = hk.without_apply_rng(hk.transform(self.collapsed_fn))
 
     def init(self, *args):
-        _ = self.col_transformed.init(*args, **self.kwargs)
         return self.exp_transformed.init(*args, **self.kwargs)
 
     def apply(self, params, images):
