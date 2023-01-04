@@ -23,6 +23,8 @@ NUM_TRAINING_IMAGES = 800
 
 class TrainingState(NamedTuple):
     params: hk.Params
+    best_params: hk.Params
+    best_psnr: float
     opt_state: optax.OptState
 
 
@@ -63,7 +65,7 @@ def main(unused_args):
         grads = jax.grad(loss)(state.params, batch)
         updates, opt_state = optimiser.update(grads, state.opt_state)
         params = optax.apply_updates(state.params, updates)
-        return TrainingState(params, opt_state)
+        return TrainingState(params, state.best_params, state.best_psnr, opt_state)
 
     def eval(eval_dataset):
         batch_mean_abs_errors = []
@@ -88,6 +90,9 @@ def main(unused_args):
                       "mae (optimised)": f"{mean_abs_error:.5f}",
                       "psnr": f"{psnr_val:.3f}",
                       })
+        if psnr_val > state.best_psnr:
+            return TrainingState(state.params, state.params, psnr_val.item(), state.opt_state)
+        return state
 
     # Make datasets.
     train_dataset, eval_dataset = get_dataset(dataset_name='div2k',
@@ -100,7 +105,7 @@ def main(unused_args):
     # Initialise network and optimiser; note we draw an input to get shapes.
     initial_params = network.init(rng, list(train_dataset.take(1).as_numpy_iterator())[0].lr)
     initial_opt_state = optimiser.init(initial_params)
-    state = TrainingState(initial_params, initial_opt_state)
+    state = TrainingState(initial_params, initial_params, 0, initial_opt_state)
 
     # Convert datasets to numpy for compatability with Jax
     train_dataset = tfds.as_numpy(train_dataset)
@@ -113,12 +118,12 @@ def main(unused_args):
     for batch in train_dataset:
         if iteration % iterations_per_epoch == 0:
             # Evaluate performance at the start of each epoch
-            eval(eval_dataset)
+            state = eval(eval_dataset)
         state = SGD(state, batch)
         iteration += 1
 
-    logging.info("Training loop completed.")
-    jnp.savez(f'params_{FLAGS.model}_{FLAGS.epochs}.npz', state.params)
+    logging.info(f"Training loop completed. Best PSNR = {state.best_psnr}")
+    jnp.savez(f'params_{FLAGS.model}_{FLAGS.epochs}.npz', state.best_params)
 
 
 if __name__ == "__main__":
