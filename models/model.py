@@ -6,6 +6,7 @@ import haiku as hk
 import models.sesr as sesr
 import models.sesr_collapsed as sesr_c
 from models.collapser import collapse
+import pruning
 
 
 def get_sesr_args(name: str):
@@ -38,8 +39,10 @@ class Model:
     def init(self, *args):
         return self.exp_transformed.init(*args, **self.kwargs)
 
-    def apply(self, params, images):
+    def apply(self, params, mask, images):
         if self.should_collapse:
-            return self.col_transformed.apply(collapse(params, **self.kwargs), images, **self.kwargs)
+            collapsed_params = collapse(params, **self.kwargs)
+            collapsed_params = pruning.apply_mask(collapsed_params, mask)
+            return self.col_transformed.apply(collapsed_params, images, **self.kwargs)
         else:
             return self.exp_transformed.apply(params, images, **self.kwargs)
