@@ -20,6 +20,7 @@ class SESR(hk.Module):
 
     def __call__(self,
                  inputs: jnp.ndarray):
+        inputs = inputs - 0.5 # Normalize inputs from [0,1] to [-1/2,1/2]
         first5x5 = LinearBlock(hidden_dim=self.hidden_dim,
                                output_dim=self.f,
                                kernel=5,
@@ -39,7 +40,8 @@ class SESR(hk.Module):
         c = last5x5(b)  # Second long residual connection
         d = inputs + c
         e = self.depth_to_space(d)
-        return jnp.clip(e[..., jnp.newaxis], a_min=0., a_max=1.)  # Add singleton channel and clips output
+        outputs = e + 0.5  # Bring outputs back to [0,1]
+        return jnp.clip(outputs[..., jnp.newaxis], a_min=0., a_max=1.)  # Add singleton channel and clips output
 
     def depth_to_space(self,
                        inputs: jnp.ndarray):

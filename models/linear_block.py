@@ -16,8 +16,8 @@ class LinearBlock(hk.Module):
 
     def __call__(self,
                  inputs: jnp.ndarray):
-        conv1 = hk.Conv2D(output_channels=self.hidden_dim, kernel_shape=self.kernel, with_bias=False)
-        conv2 = hk.Conv2D(output_channels=self.output_dim, kernel_shape=1, with_bias=False)
+        conv1 = hk.Conv2D(output_channels=self.hidden_dim, kernel_shape=self.kernel)
+        conv2 = hk.Conv2D(output_channels=self.output_dim, kernel_shape=1)
 
         return conv2(conv1(inputs))
 
