@@ -14,14 +14,15 @@ import wandb
 from data_preparation import get_dataset, Batch
 
 flags.DEFINE_integer('seed', 42, 'Random seed to set')
-flags.DEFINE_integer('epochs', 300, 'Number of epochs to train')
+flags.DEFINE_integer('epochs', 600, 'Number of epochs to train (divide by pruning_epochs to find number of pruning '
+                                    'iterations')
 flags.DEFINE_integer('batch_size', 32, 'Batch size for training')
 flags.DEFINE_integer('num_crops_per_image', 64, 'Number of random crops to take from each image')
 flags.DEFINE_integer('scale', 2, 'Scaling factor')
 flags.DEFINE_string('model', 'M3', 'Model to train')
 flags.DEFINE_boolean('collapse', True, 'Use collapsed model in forward pass')
 flags.DEFINE_float('pruning_fraction', 0.2, 'Fraction of weights to prune each time pruning is done')
-flags.DEFINE_integer('pruning_epochs', 10, 'Number of epochs to train for between pruning iterations')
+flags.DEFINE_integer('pruning_epochs', 50, 'Number of epochs to train for between pruning iterations')
 flags.DEFINE_string('initial_params', None, 'File containing initial parameters for model')
 flags.DEFINE_string('initial_mask', None, 'File containing initial mask for model')
 FLAGS = flags.FLAGS
@@ -142,7 +143,7 @@ def main(unused_args):
             # Rewind weights to those after the 5th epoch
             jnp.savez("rewind_params.npz", state.best_params)
         if iteration != 0 and iteration % (FLAGS.pruning_epochs * iterations_per_epoch) == 0:
-            # Every 100 iterations apply pruning and reset to initial params
+            # After 'pruning_epochs' apply pruning and reset to initial params
             pruning_iteration = (iteration // (FLAGS.pruning_epochs * iterations_per_epoch)) - 1
             jnp.savez(f"pruning_iter_{pruning_iteration}_mask.npz", state.mask)
             jnp.savez(f"pruning_iter_{pruning_iteration}_params.npz", state.best_params)
