@@ -1,0 +1,5 @@
+Each NN was trained for 50 epochs.
+
+rewind_params.npz - Parameters "rewound" to after pruning (from 5 epochs into original training run)
+pruning_iter_{i}_mask.npz - Binary parameters for mask after ith iteration of pruning. Comprised of 0.8^i 0s.
+pruning_iter_{i}_params.npz - Best parameters corresponding to binary mask at ith iteration of pruning.
