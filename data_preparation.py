@@ -1,3 +1,5 @@
+# Data pre-processing pipeline, largely based on that of the original authors for accurate comparison of results:
+# https://github.com/ARM-software/sesr/blob/master/utils.py
 import numpy as np
 import tensorflow as tf
 import tensorflow_datasets as tfds
